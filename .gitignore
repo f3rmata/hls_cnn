@@ -1,0 +1,4 @@
+build
+tests/hw/hls_cnn.prj
+tests/hw/logs
+tests/hw/vitis_hls.log
