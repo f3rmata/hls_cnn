@@ -16,9 +16,19 @@ set PROJ_ROOT $CUR_DIR/../..
 set SRC_DIR $PROJ_ROOT/src
 
 # Project configuration
-set XPART xc7z020-clg400-1
 set PROJ "hls_cnn.prj"
 set SOLN "sol"
+
+# Device part configuration
+# Check if HLS_PART is set in environment (from Makefile)
+if {[info exists ::env(HLS_PART)]} {
+  set XPART $::env(HLS_PART)
+  puts "Using device part from environment: $XPART"
+} else {
+  # Default part if not specified
+  set XPART xc7z020clg400-1
+  puts "Using default device part: $XPART"
+}
 
 # Clock period (100 MHz = 10 ns)
 if {![info exists CLKP]} {
