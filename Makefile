@@ -73,8 +73,13 @@ show_config:
 	@echo "VPP           : $(VPP)"
 	@echo "=========================================="
 
+# MNIST test directory
+TEST_MNIST_DIR := $(TEST_DIR)/mnist
+
 # Targets
 .PHONY: all clean unit_test integration_test hls_test hls_csim hls_synth hls_cosim hls_export help
+.PHONY: mnist_download mnist_train mnist_test mnist_test_quick mnist_test_validation mnist_test_full
+.PHONY: mnist_inference mnist_inference_quick mnist_inference_validation mnist_inference_full
 
 all: unit_test integration_test
 
@@ -91,6 +96,18 @@ help:
 	@echo "  make unit_test          - Build and run unit tests (CPU)"
 	@echo "  make integration_test   - Build and run integration test (CPU)"
 	@echo ""
+	@echo "MNIST Testing (Random Weights):"
+	@echo "  make mnist_download     - Download MNIST dataset"
+	@echo "  make mnist_test_quick   - Test on 10 MNIST images (fast)"
+	@echo "  make mnist_test_validation - Test on 100 MNIST images"
+	@echo "  make mnist_test_full    - Test on 10,000 MNIST images (slow)"
+	@echo ""
+	@echo "MNIST Testing (Trained Weights):"
+	@echo "  make mnist_train        - Train CNN and export weights (requires PyTorch)"
+	@echo "  make mnist_inference_quick - Inference on 10 images with trained weights"
+	@echo "  make mnist_inference_validation - Inference on 100 images"
+	@echo "  make mnist_inference_full - Inference on 10,000 images"
+	@echo ""
 	@echo "HLS Hardware Flow:"
 	@echo "  make hls_test          - Run all HLS tests (C sim)"
 	@echo "  make hls_csim          - Run HLS C simulation"
@@ -106,12 +123,13 @@ help:
 	@echo "Cleanup:"
 	@echo "  make clean             - Clean all build artifacts"
 	@echo "  make clean_hls         - Clean only HLS project files"
+	@echo "  make clean_mnist       - Clean MNIST data and weights"
 	@echo ""
 
 # Unit test (CPU only)
 unit_test: $(BUILD_DIR)/unit_test
 	@echo "Running unit tests..."
-	@$(BUILD_DIR)/unit_test
+	@LD_LIBRARY_PATH="" $(BUILD_DIR)/unit_test
 
 $(BUILD_DIR)/unit_test: $(TEST_SW_DIR)/unit_test.cpp $(SRC_DIR)/hls_cnn.h $(SRC_DIR)/cnn_marco.h
 	@mkdir -p $(BUILD_DIR)
@@ -120,7 +138,7 @@ $(BUILD_DIR)/unit_test: $(TEST_SW_DIR)/unit_test.cpp $(SRC_DIR)/hls_cnn.h $(SRC_
 # Integration test (CPU only)
 integration_test: $(BUILD_DIR)/integration_test
 	@echo "Running integration test..."
-	@$(BUILD_DIR)/integration_test
+	@LD_LIBRARY_PATH="" $(BUILD_DIR)/integration_test
 
 $(BUILD_DIR)/integration_test: $(TEST_SW_DIR)/integration_test.cpp $(SRC_DIR)/hls_cnn.cpp $(SRC_DIR)/hls_cnn.h $(SRC_DIR)/cnn_marco.h
 	@mkdir -p $(BUILD_DIR)
@@ -190,5 +208,105 @@ clean_hls:
 	rm -rf $(TEST_HW_DIR)/*.log
 	rm -rf $(TEST_HW_DIR)/logs
 	@echo "HLS project files cleaned"
+
+# Clean MNIST data and weights
+clean_mnist:
+	rm -rf $(TEST_MNIST_DIR)/data
+	rm -rf $(TEST_MNIST_DIR)/weights
+	rm -f $(BUILD_DIR)/mnist_test
+	@echo "MNIST data and weights cleaned"
+
+############################## MNIST Test Targets ##############################
+
+# Download MNIST dataset
+mnist_download:
+	@echo "=========================================="
+	@echo "Downloading MNIST Dataset"
+	@echo "=========================================="
+	cd $(TEST_MNIST_DIR) && python3 download_mnist.py
+
+# Train CNN and export weights
+mnist_train:
+	@echo "=========================================="
+	@echo "Training CNN on MNIST"
+	@echo "=========================================="
+	@which python3 > /dev/null || (echo "ERROR: python3 not found" && exit 1)
+	@python3 -c "import torch" 2>/dev/null || (echo "ERROR: PyTorch not installed. Install with: pip3 install torch torchvision" && exit 1)
+	cd $(TEST_MNIST_DIR) && python3 train_mnist.py --epochs 10
+
+# Build MNIST test executable
+$(BUILD_DIR)/mnist_test: $(TEST_MNIST_DIR)/mnist_test.cpp $(SRC_DIR)/hls_cnn.cpp $(SRC_DIR)/hls_cnn.h $(SRC_DIR)/cnn_marco.h
+	@mkdir -p $(BUILD_DIR)
+	@echo "Building MNIST test..."
+	$(CXX) $(CXXFLAGS) -DUSE_FLOAT -o $@ $(TEST_MNIST_DIR)/mnist_test.cpp $(SRC_DIR)/hls_cnn.cpp -lm
+
+# Quick MNIST test (10 images)
+mnist_test_quick: $(BUILD_DIR)/mnist_test
+	@echo "=========================================="
+	@echo "Running Quick MNIST Test (10 images)"
+	@echo "=========================================="
+	@[ -f $(TEST_MNIST_DIR)/data/quick_test_images.bin ] || (echo "ERROR: MNIST data not found. Run 'make mnist_download' first." && exit 1)
+	cd $(TEST_MNIST_DIR) && LD_LIBRARY_PATH="" ../../$(BUILD_DIR)/mnist_test quick
+
+# Validation MNIST test (100 images)
+mnist_test_validation: $(BUILD_DIR)/mnist_test
+	@echo "=========================================="
+	@echo "Running Validation MNIST Test (100 images)"
+	@echo "=========================================="
+	@[ -f $(TEST_MNIST_DIR)/data/validation_images.bin ] || (echo "ERROR: MNIST data not found. Run 'make mnist_download' first." && exit 1)
+	cd $(TEST_MNIST_DIR) && LD_LIBRARY_PATH="" ../../$(BUILD_DIR)/mnist_test validation
+
+# Full MNIST test (10,000 images)
+mnist_test_full: $(BUILD_DIR)/mnist_test
+	@echo "=========================================="
+	@echo "Running Full MNIST Test (10,000 images)"
+	@echo "=========================================="
+	@[ -f $(TEST_MNIST_DIR)/data/test_images.bin ] || (echo "ERROR: MNIST data not found. Run 'make mnist_download' first." && exit 1)
+	cd $(TEST_MNIST_DIR) && LD_LIBRARY_PATH="" ../../$(BUILD_DIR)/mnist_test test
+
+# Convenient alias
+mnist_test: mnist_test_quick
+
+# Build MNIST inference executable (with trained weights)
+$(BUILD_DIR)/mnist_inference: $(TEST_MNIST_DIR)/mnist_inference.cpp $(SRC_DIR)/hls_cnn.cpp $(SRC_DIR)/hls_cnn.h $(SRC_DIR)/cnn_marco.h
+	@mkdir -p $(BUILD_DIR)
+	@echo "Building MNIST inference test..."
+	$(CXX) $(CXXFLAGS) -DUSE_FLOAT -o $@ $(TEST_MNIST_DIR)/mnist_inference.cpp $(SRC_DIR)/hls_cnn.cpp -lm
+
+# Quick MNIST inference test (10 images with trained weights)
+mnist_inference_quick: $(BUILD_DIR)/mnist_inference
+	@echo "=========================================="
+	@echo "Running Quick MNIST Inference (10 images)"
+	@echo "=========================================="
+	@[ -f $(TEST_MNIST_DIR)/weights/conv1_weights.bin ] || (echo "ERROR: Trained weights not found. Run 'make mnist_train' first." && exit 1)
+	@[ -f $(TEST_MNIST_DIR)/data/quick_test_images.bin ] || (echo "ERROR: MNIST data not found. Run 'make mnist_download' first." && exit 1)
+	cd $(TEST_MNIST_DIR) && LD_LIBRARY_PATH="" ../../$(BUILD_DIR)/mnist_inference quick
+
+# Validation MNIST inference test (100 images with trained weights)
+mnist_inference_validation: $(BUILD_DIR)/mnist_inference
+	@echo "=========================================="
+	@echo "Running Validation MNIST Inference (100 images)"
+	@echo "=========================================="
+	@[ -f $(TEST_MNIST_DIR)/weights/conv1_weights.bin ] || (echo "ERROR: Trained weights not found. Run 'make mnist_train' first." && exit 1)
+	@[ -f $(TEST_MNIST_DIR)/data/validation_images.bin ] || (echo "ERROR: MNIST data not found. Run 'make mnist_download' first." && exit 1)
+	cd $(TEST_MNIST_DIR) && LD_LIBRARY_PATH="" ../../$(BUILD_DIR)/mnist_inference validation
+
+# Full MNIST inference test (10,000 images with trained weights)
+mnist_inference_full: $(BUILD_DIR)/mnist_inference
+	@echo "=========================================="
+	@echo "Running Full MNIST Inference (10,000 images)"
+	@echo "=========================================="
+	@[ -f $(TEST_MNIST_DIR)/weights/conv1_weights.bin ] || (echo "ERROR: Trained weights not found. Run 'make mnist_train' first." && exit 1)
+	@[ -f $(TEST_MNIST_DIR)/data/test_images.bin ] || (echo "ERROR: MNIST data not found. Run 'make mnist_download' first." && exit 1)
+	cd $(TEST_MNIST_DIR) && LD_LIBRARY_PATH="" ../../$(BUILD_DIR)/mnist_inference test
+	@echo "=========================================="
+	@echo "Running Full MNIST Inference (10,000 images)"
+	@echo "=========================================="
+	@[ -f $(TEST_MNIST_DIR)/weights/conv1_weights.bin ] || (echo "ERROR: Trained weights not found. Run 'make mnist_train' first." && exit 1)
+	@[ -f $(TEST_MNIST_DIR)/data/test_images.bin ] || (echo "ERROR: MNIST data not found. Run 'make mnist_download' first." && exit 1)
+	cd $(TEST_MNIST_DIR) && ../../$(BUILD_DIR)/mnist_inference test
+
+# Convenient alias
+mnist_inference: mnist_inference_quick
 
 .DEFAULT_GOAL := help

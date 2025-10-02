@@ -14,8 +14,9 @@
 - ✅ **模块化设计**：卷积、池化、全连接层独立实现，易于复用和扩展
 - ✅ **流水线优化**：关键循环采用 HLS Pipeline 优化，提升吞吐量
 - ✅ **参数化配置**：支持模板参数化，灵活调整网络结构
-- ✅ **完整测试**：包含单元测试和集成测试，验证功能正确性
+- ✅ **完整测试**：包含单元测试、集成测试和MNIST数据集验证
 - ✅ **AXI 接口**：标准 AXI Stream/Memory-Mapped 接口，便于集成
+- ✨ **MNIST支持**：完整的MNIST手写数字识别测试套件，包含训练和推理
 
 ### 网络架构
 
@@ -123,7 +124,26 @@ void fully_connected(data_t input[IN_SIZE], ...);
 
 ### 快速开始
 
-#### 1. 运行单元测试（CPU 仿真）
+#### 1. MNIST 快速测试（推荐新手）
+
+```bash
+# 下载 MNIST 数据集
+make mnist_download
+
+# 快速测试（10张图片，验证推理流程）
+make mnist_test_quick
+```
+
+**预期输出**：
+```
+Total images: 10
+Correct predictions: 1
+Accuracy: 10.00%  # 随机权重，用于验证流程
+```
+
+详细说明：[tests/mnist/QUICKSTART.md](tests/mnist/QUICKSTART.md)
+
+#### 2. 运行单元测试（CPU 仿真）
 
 ```bash
 cd /home/fermata/Development/FPGA/Vitis/2025-fpga-comp-prj/hls_cnn
@@ -140,7 +160,7 @@ PASS: Conv2D test
 Test Results: 5/5 passed
 ```
 
-#### 2. 运行集成测试（CPU 仿真）
+#### 3. 运行集成测试（CPU 仿真）
 
 ```bash
 make integration_test
@@ -160,7 +180,29 @@ Output logits:
 PASS: CNN inference test
 ```
 
-#### 3. HLS C 仿真
+#### 4. MNIST 完整测试（训练+验证）
+
+```bash
+# 安装依赖（首次）
+pip3 install torch torchvision
+
+# 训练CNN模型
+make mnist_train
+
+# 使用训练权重进行推理测试
+make mnist_inference_validation
+```
+
+**预期输出**：
+```
+Total images: 100
+Correct predictions: 97
+Accuracy: 97.00%  # 训练权重，实际性能
+```
+
+查看完整MNIST测试指南：[tests/mnist/QUICKSTART.md](tests/mnist/QUICKSTART.md)
+
+#### 5. HLS C 仿真
 
 ```bash
 make hls_csim
@@ -168,11 +210,11 @@ make hls_csim
 
 或手动运行：
 ```bash
-cd tests
+cd tests/hw
 vitis_hls -f run_hls.tcl
 ```
 
-#### 4. HLS 综合
+#### 6. HLS 综合
 
 ```bash
 make hls_synth

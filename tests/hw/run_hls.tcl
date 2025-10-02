@@ -7,8 +7,8 @@
 set CSIM 1
 set CSYNTH 1
 set COSIM 1
-set VIVADO_SYN 0
-set VIVADO_IMPL 0
+set VIVADO_SYN 1
+set VIVADO_IMPL 1
 
 # Directory setup
 set CUR_DIR [pwd]
