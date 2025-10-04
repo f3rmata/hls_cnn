@@ -8,20 +8,26 @@
 #include "hls_cnn.h"
 
 /**
- * @brief Complete CNN inference pipeline (simplified LeNet-style)
+ * @brief Complete CNN inference pipeline (LeNet-5 style optimized for Zynq
+ * 7020)
  *
- * Architecture:
- * Input [1x28x28] -> Conv1 [16x26x26] -> Pool1 [16x13x13]
- * -> Conv2 [32x11x11] -> Pool2 [32x5x5] -> FC1 [128] -> FC2 [10]
+ * Architecture (optimized to reduce resource usage):
+ * Input [1x28x28] -> Conv1 [6x24x24] -> Pool1 [6x12x12]
+ * -> Conv2 [16x8x8] -> Pool2 [16x4x4] -> FC1 [84] -> FC2 [10]
+ *
+ * Changes from original:
+ * - Conv1: 16->6 channels, kernel 3->5
+ * - Conv2: 32->16 channels, kernel 3->5
+ * - FC1: 128->84 outputs (input size reduced from 800 to 256)
  *
  * @param input Input image [1][28][28]
- * @param conv1_weights Conv1 weights [16][1][3][3]
- * @param conv1_bias Conv1 bias [16]
- * @param conv2_weights Conv2 weights [32][16][3][3]
- * @param conv2_bias Conv2 bias [32]
- * @param fc1_weights FC1 weights [128][800]
- * @param fc1_bias FC1 bias [128]
- * @param fc2_weights FC2 weights [10][128]
+ * @param conv1_weights Conv1 weights [6][1][5][5]
+ * @param conv1_bias Conv1 bias [6]
+ * @param conv2_weights Conv2 weights [16][6][5][5]
+ * @param conv2_bias Conv2 bias [16]
+ * @param fc1_weights FC1 weights [84][256]
+ * @param fc1_bias FC1 bias [84]
+ * @param fc2_weights FC2 weights [10][84]
  * @param fc2_bias FC2 bias [10]
  * @param output Output logits [10]
  */
@@ -52,44 +58,34 @@ void hls_cnn::cnn_inference(
 #pragma HLS INTERFACE mode = s_axilite port = return
 #pragma HLS INTERFACE mode = m_axi depth = 784 port = input offset =           \
     slave bundle = gmem0
-#pragma HLS INTERFACE mode = m_axi depth = 432 port = conv1_weights offset =   \
+#pragma HLS INTERFACE mode = m_axi depth = 150 port = conv1_weights offset =   \
     slave bundle = gmem1
-#pragma HLS INTERFACE mode = m_axi depth = 16 port = conv1_bias offset =       \
+#pragma HLS INTERFACE mode = m_axi depth = 6 port = conv1_bias offset =        \
     slave bundle = gmem1
-#pragma HLS INTERFACE mode = m_axi depth = 4608 port = conv2_weights offset =  \
+#pragma HLS INTERFACE mode = m_axi depth = 2400 port = conv2_weights offset =  \
     slave bundle = gmem2
-#pragma HLS INTERFACE mode = m_axi depth = 32 port = conv2_bias offset =       \
+#pragma HLS INTERFACE mode = m_axi depth = 16 port = conv2_bias offset =       \
     slave bundle = gmem2
-#pragma HLS INTERFACE mode = m_axi depth = 102400 port = fc1_weights offset =  \
+#pragma HLS INTERFACE mode = m_axi depth = 21504 port = fc1_weights offset =   \
     slave bundle = gmem3
-#pragma HLS INTERFACE mode = m_axi depth = 128 port = fc1_bias offset =        \
+#pragma HLS INTERFACE mode = m_axi depth = 84 port = fc1_bias offset =         \
     slave bundle = gmem3
-#pragma HLS INTERFACE mode = m_axi depth = 1280 port = fc2_weights offset =    \
+#pragma HLS INTERFACE mode = m_axi depth = 840 port = fc2_weights offset =     \
     slave bundle = gmem4
 #pragma HLS INTERFACE mode = m_axi depth = 10 port = fc2_bias offset =         \
     slave bundle = gmem4
 #pragma HLS INTERFACE mode = m_axi depth = 10 port = output offset =           \
     slave bundle = gmem5
 
-  // Layer outputs
+  // Layer outputs - NO array partitioning to minimize LUT usage
+  // Arrays are kept in BRAM with minimal multiplexing
   static data_t conv1_out[CONV1_OUT_CH][POOL1_IMG_SIZE][POOL1_IMG_SIZE];
-#pragma HLS ARRAY_PARTITION variable = conv1_out dim = 1 cyclic factor = 4
-
   static data_t pool1_out[CONV1_OUT_CH][CONV2_IMG_SIZE][CONV2_IMG_SIZE];
-#pragma HLS ARRAY_PARTITION variable = pool1_out dim = 1 cyclic factor = 4
-
   static data_t conv2_out[CONV2_OUT_CH][POOL2_IMG_SIZE][POOL2_IMG_SIZE];
-#pragma HLS ARRAY_PARTITION variable = conv2_out dim = 1 cyclic factor = 4
-
   static data_t pool2_out[CONV2_OUT_CH][POOL2_IMG_SIZE / POOL2_SIZE]
                          [POOL2_IMG_SIZE / POOL2_SIZE];
-#pragma HLS ARRAY_PARTITION variable = pool2_out dim = 1 cyclic factor = 4
-
   static data_t flatten_out[FC1_IN_SIZE];
-#pragma HLS ARRAY_PARTITION variable = flatten_out cyclic factor = 16
-
   static data_t fc1_out[FC1_OUT_SIZE];
-#pragma HLS ARRAY_PARTITION variable = fc1_out cyclic factor = 8
 
   // Layer 1: Conv + ReLU
   conv2d<CONV1_IN_CH, CONV1_OUT_CH, CONV1_IMG_SIZE, CONV1_IMG_SIZE,

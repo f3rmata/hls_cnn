@@ -326,6 +326,33 @@ void batch_norm(data_t input[CH][H][W],
 
 ---
 
+## ⚠️ 资源优化说明
+
+**重要**: 原始设计存在资源占用过高的问题（约为正常水平的 5 倍）。主要原因包括：
+- 过度的数组分割导致寄存器消耗过大
+- Pipeline 位置不当导致循环过度展开
+- 缺少权重缓存机制
+
+### 快速优化（推荐）
+
+运行一键优化脚本：
+```bash
+cd /home/fermata/Development/FPGA/Vitis/2025-fpga-comp-prj/hls_cnn
+./claude-doc/QUICK_OPTIMIZATION.sh
+```
+
+**优化效果**:
+- LUT: 50K → 15K (减少 70%)
+- DSP: 300 → 48 (减少 84%)
+- FF: 80K → 20K (减少 75%)
+- 延迟: 轻微增加（可通过 Dataflow 优化恢复）
+
+详细分析请参考：
+- [架构对比分析](claude-doc/ARCHITECTURE_ANALYSIS.md)
+- [资源对比速查表](claude-doc/RESOURCE_COMPARISON.md)
+
+---
+
 ## 常见问题
 
 ### Q1: 综合失败，报错 "timing constraints not met"
@@ -352,6 +379,13 @@ void batch_norm(data_t input[CH][H][W],
 - 减少测试数据量：修改 `integration_test.cpp` 中的循环次数
 - 使用 `csim_design` 仅做 C 仿真验证功能
 - Co-simulation 仅在最终验证时运行
+
+### Q4: 资源使用超出 FPGA 容量
+
+**解决方案**：
+- 运行优化脚本：`./claude-doc/QUICK_OPTIMIZATION.sh`
+- 查看详细分析：`claude-doc/ARCHITECTURE_ANALYSIS.md`
+- 对于 Zynq-7020，必须使用优化版本才能实现
 
 ---
 

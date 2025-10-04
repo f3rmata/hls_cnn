@@ -4,9 +4,9 @@
 ############################################################
 
 # Flow control flags
-set CSIM 1
+set CSIM 0
 set CSYNTH 1
-set COSIM 1
+set COSIM 0
 set VIVADO_SYN 1
 set VIVADO_IMPL 1
 
@@ -38,11 +38,11 @@ if {![info exists CLKP]} {
 # Create/reset project
 open_project -reset $PROJ
 
-# Add design files
-add_files "${SRC_DIR}/hls_cnn.cpp" -cflags "-I${SRC_DIR} -std=c++14 -DUSE_FLOAT"
-add_files "${CUR_DIR}/uut_top.cpp" -cflags "-I${SRC_DIR} -I${CUR_DIR} -std=c++14 -DUSE_FLOAT"
+# Add design files - REMOVED -DUSE_FLOAT to use ap_fixed<16,8> for hardware
+add_files "${SRC_DIR}/hls_cnn.cpp" -cflags "-I${SRC_DIR} -std=c++14"
+add_files "${CUR_DIR}/uut_top.cpp" -cflags "-I${SRC_DIR} -I${CUR_DIR} -std=c++14"
 
-# Add testbench files
+# Add testbench files - keep USE_FLOAT for C simulation accuracy
 add_files -tb "${CUR_DIR}/test.cpp" -cflags "-I${SRC_DIR} -I${CUR_DIR} -std=c++14 -DUSE_FLOAT"
 
 # Set top function

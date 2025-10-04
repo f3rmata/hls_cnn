@@ -1,200 +1,188 @@
-# HLS CNN 快速入门指南
+# HLS CNN MNIST测试 - 快速使用指南
 
-## 5分钟快速体验
+## 🚀 5分钟快速开始
 
-### 第一步：验证环境
+### 方法1：一键运行（最简单）
+
+```bash
+cd /home/fermata/Development/FPGA/Vitis/2025-fpga-comp-prj/hls_cnn/tests/mnist
+./setup.sh
+```
+
+这会自动完成：
+- ✓ 下载MNIST数据集
+- ✓ 编译测试程序  
+- ✓ 运行快速测试
+
+### 方法2：使用Makefile（推荐）
 
 ```bash
 cd /home/fermata/Development/FPGA/Vitis/2025-fpga-comp-prj/hls_cnn
-ls -la
-# 应该看到: src/ tests/ Makefile README.md
+
+# 1. 下载数据（只需运行一次）
+make mnist_download
+
+# 2. 快速测试（10张图片，随机权重）
+make mnist_test_quick
 ```
 
-### 第二步：运行所有测试
+### 方法3：完整流程（包含训练）
 
 ```bash
-# 单元测试（验证各层功能）
-make unit_test
+# 前提：安装PyTorch
+pip3 install torch torchvision
 
-# 期望输出:
-# ========================================
-# Test Results: 5/5 passed
-# ========================================
+# 1. 下载数据
+make mnist_download
+
+# 2. 训练模型（10个epoch，约5-10分钟）
+make mnist_train
+
+# 3. 验证训练结果（100张图片，应该95-98%准确率）
+make mnist_inference_validation
+
+# 4. 完整测试（10,000张图片）
+make mnist_inference_full
 ```
 
+## 📊 预期结果
+
+### 随机权重测试
+```
+Total images: 10
+Correct predictions: 1
+Accuracy: 10.00%
+```
+✓ 这是正常的！用于验证推理流程正确。
+
+### 训练权重测试
+```
+Total images: 100
+Correct predictions: 97
+Accuracy: 97.00%
+```
+✓ 准确率应该在95-98%之间。
+
+## 🔧 所有可用命令
+
+### 数据管理
 ```bash
-# 集成测试（验证完整CNN流程）
-make integration_test
-
-# 期望输出:
-# ========================================
-# Integration Test: PASSED
-# ========================================
+make mnist_download        # 下载MNIST数据集
+make clean_mnist          # 清理所有数据和权重
 ```
 
-### 第三步：查看项目文档
-
+### 测试（随机权重）
 ```bash
-# 完整说明
-cat README.md
-
-# 项目总结
-cat PROJECT_SUMMARY.md
+make mnist_test_quick      # 10张图片（~10秒）
+make mnist_test_validation # 100张图片（~1分钟）
+make mnist_test_full       # 10,000张图片（~10分钟）
 ```
 
----
-
-## 核心文件说明
-
-| 文件 | 用途 | 重要程度 |
-|------|------|----------|
-| `src/hls_cnn.h` | CNN层实现（卷积、池化、FC） | ⭐⭐⭐⭐⭐ |
-| `src/hls_cnn.cpp` | 顶层推理函数 | ⭐⭐⭐⭐⭐ |
-| `src/cnn_marco.h` | 网络配置参数 | ⭐⭐⭐⭐ |
-| `tests/unit_test.cpp` | 单元测试 | ⭐⭐⭐ |
-| `tests/integration_test.cpp` | 集成测试 | ⭐⭐⭐ |
-| `tests/run_hls.tcl` | HLS综合脚本 | ⭐⭐ |
-
----
-
-## 常用命令
-
+### 训练
 ```bash
-# 清理构建文件
-make clean
-
-# 查看帮助
-make help
-
-# 仅编译（不运行）
-make build/unit_test
-make build/integration_test
-
-# HLS C仿真（需要Vitis HLS）
-make hls_csim
-
-# HLS完整综合（需要Vitis HLS + 长时间）
-make hls_synth
+make mnist_train           # 训练CNN（需要PyTorch）
 ```
 
----
-
-## 修改网络结构示例
-
-### 增加卷积层输出通道
-
-编辑 `src/cnn_marco.h`:
-
-```cpp
-// 修改前
-#define CONV1_OUT_CH 16
-
-// 修改后
-#define CONV1_OUT_CH 32  // 从16改为32
-```
-
-### 更改卷积核大小
-
-```cpp
-// 修改前
-#define CONV1_KERNEL_SIZE 3
-
-// 修改后
-#define CONV1_KERNEL_SIZE 5  // 从3x3改为5x5
-```
-
-### 增加全连接层神经元
-
-```cpp
-// 修改前
-#define FC1_OUT_SIZE 128
-
-// 修改后
-#define FC1_OUT_SIZE 256  // 从128改为256
-```
-
-**注意**：修改后需要重新编译测试！
-
----
-
-## 性能优化提示
-
-### 1. 增加并行度
-
-在 `src/hls_cnn.h` 的数组分割处修改 `factor`:
-
-```cpp
-// 修改前
-#pragma HLS ARRAY_PARTITION variable=weights dim=1 cyclic factor=2
-
-// 修改后（更高并行度）
-#pragma HLS ARRAY_PARTITION variable=weights dim=1 cyclic factor=4
-```
-
-### 2. 调整流水线深度
-
-```cpp
-// 修改前
-#pragma HLS PIPELINE II=1
-
-// 修改后（放宽时序）
-#pragma HLS PIPELINE II=2
-```
-
-### 3. 使用定点数（减少资源）
-
-修改 `src/cnn_marco.h`:
-
-```cpp
-// 修改前
-typedef float data_t;
-
-// 修改后
-#include "ap_fixed.h"
-typedef ap_fixed<16,8> data_t;  // 16位定点数
-```
-
----
-
-## 故障排查
-
-### 问题：编译错误 "hls_math.h not found"
-
-**解决方案**：
+### 推理（训练权重）
 ```bash
-# 设置Vitis HLS环境变量
-source /opt/Xilinx/Vitis/2024.1/settings64.sh
+make mnist_inference_quick      # 10张图片
+make mnist_inference_validation # 100张图片
+make mnist_inference_full       # 10,000张图片
 ```
 
-### 问题：测试失败
+### 辅助工具
+```bash
+cd tests/mnist
 
-**检查步骤**：
-1. 确认没有修改过测试代码
-2. 清理并重新编译：`make clean && make unit_test`
-3. 查看详细错误信息
+# 运行综合测试
+./run_all_tests.sh
 
-### 问题：HLS综合失败
+# 可视化数据（需要matplotlib）
+python3 visualize_mnist.py quick_test
+python3 visualize_mnist.py validation
+```
 
-**可能原因**：
-- 时钟频率过高 → 修改 `run_hls.tcl` 中的时钟周期
-- 资源不足 → 减少并行度或使用更小网络
+## 📁 生成的文件
+
+运行后会生成以下目录：
+
+```
+tests/mnist/
+├── data/                  # MNIST数据集（~50MB）
+│   ├── train_images.bin   # 60,000张训练图片
+│   ├── test_images.bin    # 10,000张测试图片
+│   ├── validation_images.bin  # 100张验证图片
+│   └── quick_test_images.bin  # 10张快速测试图片
+└── weights/               # 训练权重（~500KB）
+    ├── conv1_weights.bin
+    ├── conv2_weights.bin
+    ├── fc1_weights.bin
+    └── fc2_weights.bin
+```
+
+## ❓ 常见问题
+
+### Q: "Cannot open file data/quick_test_images.bin"
+A: 运行 `make mnist_download` 下载数据
+
+### Q: "PyTorch not installed"
+A: 安装PyTorch: `pip3 install torch torchvision`（仅训练需要）
+
+### Q: "libstdc++.so.6: version GLIBCXX_3.4.XX not found"
+A: 已修复！Makefile 会自动处理库路径冲突。如果仍有问题，参见 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+
+### Q: "Trained weights not found"
+A: 运行 `make mnist_train` 训练模型
+
+### Q: 准确率很低（使用训练权重）
+A: 确保已经运行 `make mnist_train` 并成功训练
+
+### Q: 训练太慢
+A: 
+- 使用GPU（如果有）
+- 减少epoch数：`cd tests/mnist && python3 train_mnist.py --epochs 5`
+
+## 🔧 故障排除
+
+详细的故障排除指南，请参阅：
+- **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - 完整的问题解决指南
+
+## 📖 详细文档
+
+- **英文文档**: `tests/mnist/README.md`
+- **中文文档**: `tests/mnist/README_CN.md`
+- **更新日志**: `tests/mnist/MNIST_UPDATE.md`
+
+## 🎯 下一步
+
+完成MNIST测试后，可以：
+
+1. **进行HLS综合**
+   ```bash
+   make hls_csim    # HLS C仿真
+   make hls_synth   # HLS综合
+   make hls_cosim   # HLS协同仿真
+   ```
+
+2. **查看综合报告**
+   ```bash
+   cd tests/hw
+   cat hls_cnn.prj/solution1/syn/report/cnn_inference_csynth.rpt
+   ```
+
+3. **导出IP核**
+   ```bash
+   make hls_export
+   ```
+
+## 🌟 快速测试清单
+
+- [ ] 下载数据: `make mnist_download`
+- [ ] 快速测试: `make mnist_test_quick`
+- [ ] (可选) 训练模型: `make mnist_train`
+- [ ] (可选) 验证训练: `make mnist_inference_validation`
+- [ ] 查看Makefile帮助: `make help`
 
 ---
 
-## 下一步学习
-
-1. **阅读代码**：从 `src/hls_cnn.h` 开始，理解各层实现
-2. **修改参数**：尝试调整网络结构，观察性能变化
-3. **添加新层**：参考现有层实现，添加 BatchNorm 或 Dropout
-4. **HLS综合**：在真实FPGA环境中综合，查看资源使用和时序
-5. **集成应用**：将CNN模块集成到更大的系统中
-
----
-
-## 支持与反馈
-
-- 查看 `README.md` 获取完整文档
-- 查看 `PROJECT_SUMMARY.md` 了解项目概况
-- 遇到问题请检查各层单元测试是否通过
-
-**祝你使用愉快！** 🚀
+**提示**: 如果遇到任何问题，查看详细文档或运行 `make help`
