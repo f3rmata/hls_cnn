@@ -18,10 +18,10 @@
 #define MAX_KERNEL_SIZE 5
 #define MAX_POOL_SIZE 2
 
-// Layer configuration - Aggressively reduced for Zynq 7020
-// Further reduced to fit in 53K LUTs
+// Layer configuration - Balanced for Zynq 7020
+// Optimized for accuracy vs resource tradeoff
 #define CONV1_IN_CH 1
-#define CONV1_OUT_CH 4 // Reduced from 6 to 4
+#define CONV1_OUT_CH 6 // Balanced: 6 channels (LeNet-5 style)
 #define CONV1_KERNEL_SIZE 5
 #define CONV1_IMG_SIZE 28
 
@@ -29,8 +29,9 @@
 #define POOL1_IMG_SIZE (CONV1_IMG_SIZE - CONV1_KERNEL_SIZE + 1) // 24
 #define POOL1_OUT_SIZE (POOL1_IMG_SIZE / POOL1_SIZE)            // 12
 
-#define CONV2_IN_CH 4
-#define CONV2_OUT_CH 8 // Reduced from 16 to 8
+#define CONV2_IN_CH 6
+#define CONV2_OUT_CH 8
+// Final optimization: 8 channels for strict LUT constraints
 #define CONV2_KERNEL_SIZE 5
 #define CONV2_IMG_SIZE (POOL1_IMG_SIZE / POOL1_SIZE) // 12
 
@@ -41,7 +42,7 @@
 #define FC1_IN_SIZE                                                            \
   (CONV2_OUT_CH * (POOL2_IMG_SIZE / POOL2_SIZE) *                              \
    (POOL2_IMG_SIZE / POOL2_SIZE)) // 8*4*4 = 128
-#define FC1_OUT_SIZE 64           // Reduced from 84 to 64
+#define FC1_OUT_SIZE 64 // Final optimization for strict LUT constraints
 
 #define FC2_IN_SIZE 64 // Adjusted to match FC1_OUT_SIZE
 #define FC2_OUT_SIZE 10

@@ -1,0 +1,4 @@
+usage: train_model.py [-h] [--epochs EPOCHS] [--batch-size BATCH_SIZE]
+                      [--lr LR] [--dropout DROPOUT] [--no-augment]
+                      [--device DEVICE]
+train_model.py: error: unrecognized arguments: --use-augment

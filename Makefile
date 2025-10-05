@@ -78,8 +78,9 @@ TEST_MNIST_DIR := $(TEST_DIR)/mnist
 
 # Targets
 .PHONY: all clean unit_test integration_test hls_test hls_csim hls_synth hls_cosim hls_export help
-.PHONY: mnist_download mnist_train mnist_test mnist_test_quick mnist_test_validation mnist_test_full
+.PHONY: mnist_download mnist_train mnist_train_quick mnist_test mnist_test_quick mnist_test_validation mnist_test_full
 .PHONY: mnist_inference mnist_inference_quick mnist_inference_validation mnist_inference_full
+.PHONY: clean_old_scripts
 
 all: unit_test integration_test
 
@@ -103,7 +104,8 @@ help:
 	@echo "  make mnist_test_full    - Test on 10,000 MNIST images (slow)"
 	@echo ""
 	@echo "MNIST Testing (Trained Weights):"
-	@echo "  make mnist_train        - Train CNN and export weights (requires PyTorch)"
+	@echo "  make mnist_train        - Train CNN and export weights (60 epochs, ~40min)"
+	@echo "  make mnist_train_quick  - Quick training (20 epochs, ~15min)"
 	@echo "  make mnist_inference_quick - Inference on 10 images with trained weights"
 	@echo "  make mnist_inference_validation - Inference on 100 images"
 	@echo "  make mnist_inference_full - Inference on 10,000 images"
@@ -124,6 +126,7 @@ help:
 	@echo "  make clean             - Clean all build artifacts"
 	@echo "  make clean_hls         - Clean only HLS project files"
 	@echo "  make clean_mnist       - Clean MNIST data and weights"
+	@echo "  make clean_old_scripts - Remove deprecated training scripts"
 	@echo ""
 
 # Unit test (CPU only)
@@ -213,8 +216,16 @@ clean_hls:
 clean_mnist:
 	rm -rf $(TEST_MNIST_DIR)/data
 	rm -rf $(TEST_MNIST_DIR)/weights
+	rm -f $(TEST_MNIST_DIR)/best_model.pth
 	rm -f $(BUILD_DIR)/mnist_test
+	rm -f $(BUILD_DIR)/mnist_inference
 	@echo "MNIST data and weights cleaned"
+
+# Clean old/deprecated training scripts
+clean_old_scripts:
+	cd $(TEST_MNIST_DIR) && rm -f train_mnist.py train_mnist_optimized.py train_improved.py train_ultra_optimized.py
+	cd $(TEST_MNIST_DIR) && rm -f train_optimized.sh train_improved.sh
+	@echo "Old training scripts removed"
 
 ############################## MNIST Test Targets ##############################
 
@@ -228,11 +239,20 @@ mnist_download:
 # Train CNN and export weights
 mnist_train:
 	@echo "=========================================="
-	@echo "Training CNN on MNIST"
+	@echo "Training CNN on MNIST (6-8-64 Architecture)"
 	@echo "=========================================="
 	@which python3 > /dev/null || (echo "ERROR: python3 not found" && exit 1)
 	@python3 -c "import torch" 2>/dev/null || (echo "ERROR: PyTorch not installed. Install with: pip3 install torch torchvision" && exit 1)
-	cd $(TEST_MNIST_DIR) && python3 train_mnist.py --epochs 10
+	cd $(TEST_MNIST_DIR) && python3 train_model.py --epochs 60 --batch-size 32
+
+# Quick training (20 epochs for testing)
+mnist_train_quick:
+	@echo "=========================================="
+	@echo "Quick Training (20 epochs)"
+	@echo "=========================================="
+	@which python3 > /dev/null || (echo "ERROR: python3 not found" && exit 1)
+	@python3 -c "import torch" 2>/dev/null || (echo "ERROR: PyTorch not installed. Install with: pip3 install torch torchvision" && exit 1)
+	cd $(TEST_MNIST_DIR) && python3 train_model.py --epochs 20 --batch-size 64
 
 # Build MNIST test executable
 $(BUILD_DIR)/mnist_test: $(TEST_MNIST_DIR)/mnist_test.cpp $(SRC_DIR)/hls_cnn.cpp $(SRC_DIR)/hls_cnn.h $(SRC_DIR)/cnn_marco.h

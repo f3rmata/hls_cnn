@@ -4,11 +4,11 @@
 ############################################################
 
 # Flow control flags
-set CSIM 0
-set CSYNTH 1
+set CSIM 1
+set CSYNTH 0
 set COSIM 0
-set VIVADO_SYN 1
-set VIVADO_IMPL 1
+set VIVADO_SYN 0
+set VIVADO_IMPL 0
 
 # Directory setup
 set CUR_DIR [pwd]

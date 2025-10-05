@@ -1,0 +1,426 @@
+#!/usr/bin/env python3
+"""
+MNIST CNN Training Script for Zynq 7020
+Architecture: Conv1[6] -> Conv2[8] -> FC1[64] -> FC2[10]
+Matches HLS cnn_marco.h configuration
+Total Parameters: ~10,000
+Target Accuracy: 90-93%
+"""
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
+import numpy as np
+import os
+import argparse
+from datetime import datetime
+
+# ===================== Architecture Configuration =====================
+# Must match cnn_marco.h exactly
+CONV1_OUT_CH = 6
+CONV2_OUT_CH = 8
+FC1_IN_SIZE = 128  # 8*4*4
+FC1_OUT_SIZE = 64
+FC2_OUT_SIZE = 10
+
+# Quantization parameters (ap_fixed<16,8>)
+QUANT_BITS = 16
+QUANT_INT_BITS = 8
+QUANT_SCALE = 2 ** (QUANT_BITS - QUANT_INT_BITS)  # 256
+QUANT_MIN = -(2 ** (QUANT_INT_BITS - 1))  # -128
+QUANT_MAX = 2 ** (QUANT_INT_BITS - 1) - 1.0 / QUANT_SCALE  # 127.996
+
+# ===================== Quantization Layer =====================
+class FakeQuantize(nn.Module):
+    """Simulates fixed-point quantization during training"""
+    def __init__(self, bits=16, int_bits=8):
+        super().__init__()
+        self.scale = 2 ** (bits - int_bits)
+        self.min_val = -(2 ** (int_bits - 1))
+        self.max_val = 2 ** (int_bits - 1) - 1.0 / self.scale
+        
+    def forward(self, x):
+        # Round to fixed-point precision and clamp
+        x_scaled = torch.round(x * self.scale) / self.scale
+        return torch.clamp(x_scaled, self.min_val, self.max_val)
+
+# ===================== CNN Model =====================
+class MNIST_CNN(nn.Module):
+    """
+    CNN architecture matching HLS implementation
+    Conv1[6] -> Pool -> Conv2[8] -> Pool -> FC1[64] -> FC2[10]
+    """
+    def __init__(self, dropout_rate=0.4):
+        super().__init__()
+        
+        # Conv1: 1x28x28 -> 6x24x24 -> 6x12x12
+        self.conv1 = nn.Conv2d(1, CONV1_OUT_CH, kernel_size=5, padding=0)
+        self.bn1 = nn.BatchNorm2d(CONV1_OUT_CH)
+        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
+        
+        # Conv2: 6x12x12 -> 8x8x8 -> 8x4x4
+        self.conv2 = nn.Conv2d(CONV1_OUT_CH, CONV2_OUT_CH, kernel_size=5, padding=0)
+        self.bn2 = nn.BatchNorm2d(CONV2_OUT_CH)
+        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
+        
+        # FC1: 128 -> 64
+        self.fc1 = nn.Linear(FC1_IN_SIZE, FC1_OUT_SIZE)
+        self.bn3 = nn.BatchNorm1d(FC1_OUT_SIZE)
+        self.dropout = nn.Dropout(dropout_rate)
+        
+        # FC2: 64 -> 10
+        self.fc2 = nn.Linear(FC1_OUT_SIZE, FC2_OUT_SIZE)
+        
+        # Quantization
+        self.quant = FakeQuantize(QUANT_BITS, QUANT_INT_BITS)
+        
+        # Initialize weights
+        self._initialize_weights()
+        
+    def _initialize_weights(self):
+        """He initialization for ReLU networks"""
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, (nn.BatchNorm2d, nn.BatchNorm1d)):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+    
+    def forward(self, x):
+        # Conv1 + BN + ReLU + Quant + Pool
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = torch.relu(x)
+        x = self.quant(x)
+        x = self.pool1(x)
+        
+        # Conv2 + BN + ReLU + Quant + Pool
+        x = self.conv2(x)
+        x = self.bn2(x)
+        x = torch.relu(x)
+        x = self.quant(x)
+        x = self.pool2(x)
+        
+        # Flatten
+        x = x.view(x.size(0), -1)
+        
+        # FC1 + BN + ReLU + Quant + Dropout
+        x = self.fc1(x)
+        x = self.bn3(x)
+        x = torch.relu(x)
+        x = self.quant(x)
+        x = self.dropout(x)
+        
+        # FC2 + Quant
+        x = self.fc2(x)
+        x = self.quant(x)
+        
+        return x
+    
+    def export_weights_for_hls(self):
+        """Export BN-fused weights for HLS"""
+        self.eval()
+        
+        # Fuse Conv1 + BN1
+        conv1_w, conv1_b = self._fuse_bn_conv(self.conv1, self.bn1)
+        
+        # Fuse Conv2 + BN2
+        conv2_w, conv2_b = self._fuse_bn_conv(self.conv2, self.bn2)
+        
+        # Fuse FC1 + BN3
+        fc1_w, fc1_b = self._fuse_bn_fc(self.fc1, self.bn3)
+        
+        # FC2 (no BN)
+        fc2_w = self.fc2.weight.data.cpu().numpy()
+        fc2_b = self.fc2.bias.data.cpu().numpy()
+        
+        return {
+            'conv1_weights': conv1_w,
+            'conv1_bias': conv1_b,
+            'conv2_weights': conv2_w,
+            'conv2_bias': conv2_b,
+            'fc1_weights': fc1_w,
+            'fc1_bias': fc1_b,
+            'fc2_weights': fc2_w,
+            'fc2_bias': fc2_b,
+        }
+    
+    def _fuse_bn_conv(self, conv, bn):
+        """Fuse BatchNorm into Conv layer"""
+        conv_w = conv.weight.data.clone()
+        conv_b = conv.bias.data.clone() if conv.bias is not None else torch.zeros(conv.weight.size(0))
+        
+        bn_w = bn.weight.data
+        bn_b = bn.bias.data
+        bn_mean = bn.running_mean
+        bn_var = bn.running_var
+        bn_eps = bn.eps
+        
+        bn_std = torch.sqrt(bn_var + bn_eps)
+        fused_w = conv_w * (bn_w / bn_std).view(-1, 1, 1, 1)
+        fused_b = (conv_b - bn_mean) * (bn_w / bn_std) + bn_b
+        
+        return fused_w.cpu().numpy(), fused_b.cpu().numpy()
+    
+    def _fuse_bn_fc(self, fc, bn):
+        """Fuse BatchNorm into FC layer"""
+        fc_w = fc.weight.data.clone()
+        fc_b = fc.bias.data.clone()
+        
+        bn_w = bn.weight.data
+        bn_b = bn.bias.data
+        bn_mean = bn.running_mean
+        bn_var = bn.running_var
+        bn_eps = bn.eps
+        
+        bn_std = torch.sqrt(bn_var + bn_eps)
+        fused_w = fc_w * (bn_w / bn_std).view(-1, 1)
+        fused_b = (fc_b - bn_mean) * (bn_w / bn_std) + bn_b
+        
+        return fused_w.cpu().numpy(), fused_b.cpu().numpy()
+
+# ===================== Data Augmentation =====================
+def augment_data(images, labels):
+    """Simple data augmentation: random shifts ±2 pixels"""
+    augmented_images = []
+    augmented_labels = []
+    
+    for img, label in zip(images, labels):
+        # Original image
+        augmented_images.append(img)
+        augmented_labels.append(label)
+        
+        # Shifted image
+        shift_x = np.random.randint(-2, 3)
+        shift_y = np.random.randint(-2, 3)
+        shifted = np.roll(np.roll(img, shift_x, axis=1), shift_y, axis=0)
+        augmented_images.append(shifted)
+        augmented_labels.append(label)
+    
+    return np.array(augmented_images), np.array(augmented_labels)
+
+# ===================== Data Loading =====================
+def load_mnist_data(augment=True):
+    """Load MNIST data from binary files"""
+    data_dir = 'data'
+    
+    print("Loading MNIST data...")
+    train_images = np.fromfile(f'{data_dir}/train_images.bin', dtype=np.float32).reshape(-1, 1, 28, 28)
+    train_labels = np.fromfile(f'{data_dir}/train_labels.bin', dtype=np.uint8).astype(np.int64)
+    test_images = np.fromfile(f'{data_dir}/test_images.bin', dtype=np.float32).reshape(-1, 1, 28, 28)
+    test_labels = np.fromfile(f'{data_dir}/test_labels.bin', dtype=np.uint8).astype(np.int64)
+    
+    print(f"  Train: {train_images.shape}, Test: {test_images.shape}")
+    print(f"  Train labels: {train_labels.shape}, Test labels: {test_labels.shape}")
+    
+    if augment:
+        print("Applying data augmentation...")
+        train_images, train_labels = augment_data(train_images, train_labels)
+        print(f"  After augmentation: {train_images.shape}")
+    
+    return train_images, train_labels, test_images, test_labels
+
+# ===================== Training =====================
+def train_epoch(model, train_loader, criterion, optimizer, device):
+    """Train for one epoch"""
+    model.train()
+    running_loss = 0.0
+    correct = 0
+    total = 0
+    
+    for images, labels in train_loader:
+        images, labels = images.to(device), labels.to(device)
+        
+        optimizer.zero_grad()
+        outputs = model(images)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        
+        # Gradient clipping for stability
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        
+        optimizer.step()
+        
+        running_loss += loss.item()
+        _, predicted = outputs.max(1)
+        total += labels.size(0)
+        correct += predicted.eq(labels).sum().item()
+    
+    return running_loss / len(train_loader), 100.0 * correct / total
+
+def test_epoch(model, test_loader, criterion, device):
+    """Evaluate on test set"""
+    model.eval()
+    running_loss = 0.0
+    correct = 0
+    total = 0
+    
+    with torch.no_grad():
+        for images, labels in test_loader:
+            images, labels = images.to(device), labels.to(device)
+            
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+            
+            running_loss += loss.item()
+            _, predicted = outputs.max(1)
+            total += labels.size(0)
+            correct += predicted.eq(labels).sum().item()
+    
+    return running_loss / len(test_loader), 100.0 * correct / total
+
+# ===================== Weight Export =====================
+def export_weights(model, output_dir='weights'):
+    """Export quantized weights to binary files for HLS"""
+    os.makedirs(output_dir, exist_ok=True)
+    
+    print("\n" + "="*70)
+    print("Exporting weights for HLS...")
+    print("="*70)
+    
+    weights_dict = model.export_weights_for_hls()
+    
+    for name, weights in weights_dict.items():
+        # Quantize to ap_fixed<16,8> range
+        quantized = np.clip(
+            np.round(weights * QUANT_SCALE) / QUANT_SCALE,
+            QUANT_MIN,
+            QUANT_MAX
+        )
+        
+        # Save as float32 (HLS will interpret as ap_fixed)
+        output_path = os.path.join(output_dir, f'{name}.bin')
+        quantized.astype(np.float32).tofile(output_path)
+        
+        print(f"  {name:20s}: shape={str(weights.shape):15s} "
+              f"range=[{quantized.min():7.3f}, {quantized.max():7.3f}] "
+              f"size={os.path.getsize(output_path):8d} bytes")
+    
+    print(f"\nWeights exported to '{output_dir}/' directory")
+    print("="*70)
+
+# ===================== Main Training Loop =====================
+def main():
+    parser = argparse.ArgumentParser(description='Train MNIST CNN for HLS')
+    parser.add_argument('--epochs', type=int, default=60, help='Number of epochs')
+    parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
+    parser.add_argument('--lr', type=float, default=0.0015, help='Learning rate')
+    parser.add_argument('--dropout', type=float, default=0.4, help='Dropout rate')
+    parser.add_argument('--no-augment', action='store_true', help='Disable data augmentation')
+    parser.add_argument('--device', type=str, default='auto', help='Device: cuda, cpu, or auto')
+    args = parser.parse_args()
+    
+    print("="*70)
+    print("MNIST CNN Training for Zynq 7020 (6-8-64 Architecture)")
+    print("="*70)
+    print(f"Architecture: Conv1[{CONV1_OUT_CH}] -> Conv2[{CONV2_OUT_CH}] -> "
+          f"FC1[{FC1_OUT_SIZE}] -> FC2[{FC2_OUT_SIZE}]")
+    print(f"Expected parameters: ~10,000")
+    print(f"Target accuracy: 90-93%")
+    print("="*70)
+    
+    # Device selection
+    if args.device == 'auto':
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    else:
+        device = torch.device(args.device)
+    print(f"\nUsing device: {device}")
+    
+    # Load data
+    train_images, train_labels, test_images, test_labels = load_mnist_data(
+        augment=not args.no_augment
+    )
+    
+    # Create datasets
+    train_dataset = TensorDataset(
+        torch.FloatTensor(train_images),
+        torch.LongTensor(train_labels)
+    )
+    test_dataset = TensorDataset(
+        torch.FloatTensor(test_images),
+        torch.LongTensor(test_labels)
+    )
+    
+    train_loader = DataLoader(
+        train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=2
+    )
+    test_loader = DataLoader(
+        test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=2
+    )
+    
+    # Create model
+    model = MNIST_CNN(dropout_rate=args.dropout).to(device)
+    
+    # Count parameters
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"\nModel parameters:")
+    print(f"  Total: {total_params:,}")
+    print(f"  Trainable: {trainable_params:,}")
+    
+    # Training setup
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.15)
+    optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.0002)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=args.epochs, eta_min=1e-6
+    )
+    
+    # Training loop
+    print(f"\nTraining for {args.epochs} epochs...")
+    print("-"*70)
+    
+    best_acc = 0.0
+    patience = 15
+    no_improve = 0
+    start_time = datetime.now()
+    
+    for epoch in range(args.epochs):
+        train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device)
+        test_loss, test_acc = test_epoch(model, test_loader, criterion, device)
+        scheduler.step()
+        
+        print(f"Epoch {epoch+1:2d}/{args.epochs}:  "
+              f"Train Loss: {train_loss:.4f}, Acc: {train_acc:5.2f}%  |  "
+              f"Test Loss: {test_loss:.4f}, Acc: {test_acc:5.2f}%  |  "
+              f"LR: {optimizer.param_groups[0]['lr']:.6f}")
+        
+        # Save best model
+        if test_acc > best_acc:
+            best_acc = test_acc
+            torch.save(model.state_dict(), 'best_model.pth')
+            export_weights(model)
+            print(f"  *** New best: {best_acc:.2f}% - Model saved ***")
+            no_improve = 0
+        else:
+            no_improve += 1
+        
+        # Early stopping
+        if no_improve >= patience:
+            print(f"\nEarly stopping after {epoch+1} epochs (no improvement for {patience} epochs)")
+            break
+    
+    elapsed = datetime.now() - start_time
+    print("-"*70)
+    print(f"\nTraining complete!")
+    print(f"Time elapsed: {elapsed}")
+    print(f"Best test accuracy: {best_acc:.2f}%")
+    
+    # Final export
+    print("\nLoading best model and exporting final weights...")
+    model.load_state_dict(torch.load('best_model.pth'))
+    export_weights(model)
+    
+    print("\n" + "="*70)
+    print("SUCCESS! Model trained and weights exported.")
+    print("="*70)
+    print("\nNext steps:")
+    print("  1. Run 'make hls_csim' to test in HLS C simulation")
+    print("  2. Run 'make hls_synth' to synthesize for FPGA")
+    print("  3. Run 'make mnist_inference_full' to test with exported weights")
+    print("="*70)
+
+if __name__ == '__main__':
+    main()

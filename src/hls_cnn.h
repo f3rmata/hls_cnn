@@ -63,8 +63,7 @@ void conv2d(
     weight_t bias[OUT_CH],
     data_t output[OUT_CH][IMG_H - KERNEL_SIZE + 1][IMG_W - KERNEL_SIZE + 1]) {
 #pragma HLS INLINE off
-// Reduced array partitioning for resource optimization
-#pragma HLS ARRAY_PARTITION variable = bias complete
+  // All array partitioning removed for maximum LUT savings
 
   const int OUT_H = IMG_H - KERNEL_SIZE + 1;
   const int OUT_W = IMG_W - KERNEL_SIZE + 1;
@@ -82,8 +81,8 @@ CONV_OUT_CH:
     CONV_OUT_W:
       for (int ow = 0; ow < OUT_W; ow++) {
 #pragma HLS LOOP_TRIPCOUNT min = 8 max = 24
-// Increased II to save LUT resources (II=4 uses fewer multiplexers)
-#pragma HLS PIPELINE II = 4
+// Increased II to 8 for maximum LUT savings
+#pragma HLS PIPELINE II = 8
 
         acc_t sum = bias[oc];
 
@@ -140,8 +139,8 @@ POOL_CH:
     POOL_OW:
       for (int ow = 0; ow < OUT_W; ow++) {
 #pragma HLS LOOP_TRIPCOUNT min = 4 max = 12
-// Increased II to save LUT resources
-#pragma HLS PIPELINE II = 4
+// Increased II to 8 for maximum LUT savings
+#pragma HLS PIPELINE II = 8
 
         data_t max_val = input[c][oh * POOL_SIZE][ow * POOL_SIZE];
 
@@ -183,7 +182,7 @@ void fully_connected(data_t input[IN_SIZE], weight_t weights[OUT_SIZE][IN_SIZE],
                      weight_t bias[OUT_SIZE], data_t output[OUT_SIZE],
                      bool use_relu = true) {
 #pragma HLS INLINE off
-#pragma HLS ARRAY_PARTITION variable = bias complete
+  // All array partitioning removed for maximum LUT savings
 
 FC_OUT:
   for (int o = 0; o < OUT_SIZE; o++) {
@@ -193,9 +192,9 @@ FC_OUT:
 
   FC_IN:
     for (int i = 0; i < IN_SIZE; i++) {
-#pragma HLS LOOP_TRIPCOUNT min = 64 max = 128
-// Increased II to save LUT resources
-#pragma HLS PIPELINE II = 4
+#pragma HLS LOOP_TRIPCOUNT min = 64 max = 160
+// Increased II to 8 for maximum LUT savings
+#pragma HLS PIPELINE II = 8
 
       sum += input[i] * weights[o][i];
     }
@@ -221,8 +220,8 @@ FLATTEN_C:
     for (int h = 0; h < HEIGHT; h++) {
     FLATTEN_W:
       for (int w = 0; w < WIDTH; w++) {
-// Increased II to save LUT resources
-#pragma HLS PIPELINE II = 4
+// Increased II to 8 for maximum LUT savings
+#pragma HLS PIPELINE II = 8
         output[idx++] = input[c][h][w];
       }
     }
