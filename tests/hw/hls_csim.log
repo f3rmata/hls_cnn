@@ -1,0 +1,107 @@
+
+****** Vitis HLS - High-Level Synthesis from C, C++ and OpenCL v2024.1 (64-bit)
+  **** SW Build 5069499 on May 21 2024
+  **** IP Build 5075265 on Wed May 22 21:45:21 MDT 2024
+  **** SharedData Build 5076995 on Wed May 22 18:29:18 MDT 2024
+  **** Start of session at: Sun Oct  5 22:32:45 2025
+    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+    ** Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
+
+source /home/fermata/Development/Software/Xilinx/Vitis_HLS/2024.1/scripts/vitis_hls/hls.tcl -notrace
+INFO: [HLS 200-10] For user 'fermata' on host 'Fmaj9.lan' (Linux_x86_64 version 6.13.7-gentoo-dist) on Sun Oct 05 22:32:46 CST 2025
+INFO: [HLS 200-10] On os "Gentoo Linux"
+INFO: [HLS 200-10] In directory '/home/fermata/Development/FPGA/Vitis/2025-fpga-comp-prj/hls_cnn/tests/hw'
+WARNING: [HLS 200-2053] The vitis_hls executable is deprecated. Consider using vitis-run --mode hls --tcl
+Sourcing Tcl script 'run_hls.tcl'
+Using default device part: xc7z020clg400-1
+INFO: [HLS 200-1510] Running: open_project -reset hls_cnn.prj 
+INFO: [HLS 200-10] Opening and resetting project '/home/fermata/Development/FPGA/Vitis/2025-fpga-comp-prj/hls_cnn/tests/hw/hls_cnn.prj'.
+INFO: [HLS 200-1510] Running: add_files /home/fermata/Development/FPGA/Vitis/2025-fpga-comp-prj/hls_cnn/tests/hw/../../src/hls_cnn.cpp -cflags -I/home/fermata/Development/FPGA/Vitis/2025-fpga-comp-prj/hls_cnn/tests/hw/../../src -std=c++14 -DUSE_FLOAT 
+INFO: [HLS 200-10] Adding design file '/home/fermata/Development/FPGA/Vitis/2025-fpga-comp-prj/hls_cnn/tests/hw/../../src/hls_cnn.cpp' to the project
+INFO: [HLS 200-1510] Running: add_files /home/fermata/Development/FPGA/Vitis/2025-fpga-comp-prj/hls_cnn/tests/hw/uut_top.cpp -cflags -I/home/fermata/Development/FPGA/Vitis/2025-fpga-comp-prj/hls_cnn/tests/hw/../../src -I/home/fermata/Development/FPGA/Vitis/2025-fpga-comp-prj/hls_cnn/tests/hw -std=c++14 -DUSE_FLOAT 
+INFO: [HLS 200-10] Adding design file '/home/fermata/Development/FPGA/Vitis/2025-fpga-comp-prj/hls_cnn/tests/hw/uut_top.cpp' to the project
+INFO: [HLS 200-1510] Running: add_files -tb /home/fermata/Development/FPGA/Vitis/2025-fpga-comp-prj/hls_cnn/tests/hw/test.cpp -cflags -I/home/fermata/Development/FPGA/Vitis/2025-fpga-comp-prj/hls_cnn/tests/hw/../../src -I/home/fermata/Development/FPGA/Vitis/2025-fpga-comp-prj/hls_cnn/tests/hw -std=c++14 -DUSE_FLOAT 
+INFO: [HLS 200-10] Adding test bench file '/home/fermata/Development/FPGA/Vitis/2025-fpga-comp-prj/hls_cnn/tests/hw/test.cpp' to the project
+INFO: [HLS 200-1510] Running: set_top uut_top 
+INFO: [HLS 200-1510] Running: open_solution -reset sol 
+INFO: [HLS 200-10] Creating and opening solution '/home/fermata/Development/FPGA/Vitis/2025-fpga-comp-prj/hls_cnn/tests/hw/hls_cnn.prj/sol'.
+INFO: [HLS 200-10] Cleaning up the solution database.
+INFO: [HLS 200-1505] Using default flow_target 'vivado'
+Resolution: For help on HLS 200-1505 see docs.xilinx.com/access/sources/dita/topic?Doc_Version=2024.1%20English&url=ug1448-hls-guidance&resourceid=200-1505.html
+INFO: [HLS 200-1510] Running: set_part xc7z020clg400-1 
+INFO: [HLS 200-1611] Setting target device to 'xc7z020-clg400-1'
+INFO: [HLS 200-1510] Running: create_clock -period 10 
+INFO: [SYN 201-201] Setting up clock 'default' with a period of 10ns.
+INFO: [HLS 200-1510] Running: source /home/fermata/Development/FPGA/Vitis/2025-fpga-comp-prj/hls_cnn/tests/hw/hls_config.tcl
+INFO: [HLS 200-1510] Running: config_compile -pipeline_loops 64 
+INFO: [XFORM 203-1171] Pipeline the innermost loop with trip count more than 64 or its parent loop when its trip count is less than or equal 64.
+INFO: [HLS 200-1510] Running: config_schedule -effort medium -enable_dsp_full_reg 
+WARNING: [HLS 200-484] The 'config_schedule -effort' command is deprecated and will be removed in a future release.
+INFO: [HLS 200-1510] Running: config_rtl -reset all -reset_async -reset_level low 
+INFO: [HLS 200-1510] Running: config_rtl -module_auto_prefix 
+INFO: [HLS 200-1510] Running: config_array_partition -complete_threshold 0 
+INFO: [XFORM 203-102] Size-based automatic array partition disabled.
+INFO: [HLS 200-1510] Running: config_interface -m_axi_addr64 
+INFO: [HLS 200-1510] Running: config_interface -m_axi_alignment_byte_size 64 
+HLS Configuration loaded successfully (Ultra-optimized for Zynq 7020)
+=========================================
+Running C Simulation...
+=========================================
+INFO: [HLS 200-1510] Running: csim_design 
+INFO: [SIM 211-2] *************** CSIM start ***************
+INFO: [SIM 211-4] CSIM will launch CLANG as the compiler.
+INFO: [HLS 200-2036] Building debug C Simulation binaries
+   Compiling ../../../../test.cpp in debug mode
+   Compiling ../../../../uut_top.cpp in debug mode
+   Compiling ../../../../../../src/hls_cnn.cpp in debug mode
+   Generating csim.exe
+../../../../test.cpp:31:58: warning: implicit conversion from 'int' to 'float' changes value from 2147483647 to 2147483648 [-Wimplicit-const-int-float-conversion]
+    input[i] = static_cast<golden_data_t>(std::rand()) / RAND_MAX;
+                                                       ~ ^~~~~~~~
+/usr/include/stdlib.h:87:18: note: expanded from macro 'RAND_MAX'
+#define RAND_MAX        2147483647
+                        ^~~~~~~~~~
+../../../../test.cpp:41:61: warning: implicit conversion from 'int' to 'float' changes value from 2147483647 to 2147483648 [-Wimplicit-const-int-float-conversion]
+    conv1_w[i] = (static_cast<golden_data_t>(std::rand()) / RAND_MAX - 0.5) *
+                                                          ~ ^~~~~~~~
+/usr/include/stdlib.h:87:18: note: expanded from macro 'RAND_MAX'
+#define RAND_MAX        2147483647
+                        ^~~~~~~~~~
+../../../../test.cpp:55:61: warning: implicit conversion from 'int' to 'float' changes value from 2147483647 to 2147483648 [-Wimplicit-const-int-float-conversion]
+    conv2_w[i] = (static_cast<golden_data_t>(std::rand()) / RAND_MAX - 0.5) *
+                                                          ~ ^~~~~~~~
+/usr/include/stdlib.h:87:18: note: expanded from macro 'RAND_MAX'
+#define RAND_MAX        2147483647
+                        ^~~~~~~~~~
+../../../../test.cpp:67:59: warning: implicit conversion from 'int' to 'float' changes value from 2147483647 to 2147483648 [-Wimplicit-const-int-float-conversion]
+    fc1_w[i] = (static_cast<golden_data_t>(std::rand()) / RAND_MAX - 0.5) *
+                                                        ~ ^~~~~~~~
+/usr/include/stdlib.h:87:18: note: expanded from macro 'RAND_MAX'
+#define RAND_MAX        2147483647
+                        ^~~~~~~~~~
+../../../../test.cpp:79:59: warning: implicit conversion from 'int' to 'float' changes value from 2147483647 to 2147483648 [-Wimplicit-const-int-float-conversion]
+    fc2_w[i] = (static_cast<golden_data_t>(std::rand()) / RAND_MAX - 0.5) *
+                                                        ~ ^~~~~~~~
+/usr/include/stdlib.h:87:18: note: expanded from macro 'RAND_MAX'
+#define RAND_MAX        2147483647
+                        ^~~~~~~~~~
+5 warnings generated.
+========================================
+HLS CNN C/Co-Simulation Test
+========================================
+Generating test data...
+Running HLS implementation...
+Computing golden reference...
+Comparing outputs...
+Maximum error: 0
+
+========================================
+TEST PASSED!
+========================================
+INFO: [SIM 211-1] CSim done with 0 errors.
+INFO: [SIM 211-3] *************** CSIM finish ***************
+INFO: [HLS 200-2161] Finished Command csim_design Elapsed time: 00:00:08; Allocated memory: 0.199 MB.
+=========================================
+HLS Flow Completed Successfully!
+=========================================
+INFO: [HLS 200-112] Total CPU user time: 9.5 seconds. Total CPU system time: 0.72 seconds. Total elapsed time: 10.09 seconds; peak allocated memory: 257.230 MB.
