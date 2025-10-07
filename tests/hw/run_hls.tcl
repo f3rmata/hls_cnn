@@ -38,18 +38,33 @@ if {![info exists CLKP]} {
 # Create/reset project
 open_project -reset $PROJ
 
+# Determine architecture profile define from environment (defaults to BALANCED)
+set PROFILE_DEFINE ""
+if {[info exists ::env(PROFILE)]} {
+  set prof $::env(PROFILE)
+  if {$prof eq "ULTRA"} {
+    set PROFILE_DEFINE "-DPROFILE_ULTRA"
+  } elseif {$prof eq "MAX"} {
+    set PROFILE_DEFINE "-DPROFILE_MAX"
+  } else {
+    set PROFILE_DEFINE "-DPROFILE_BALANCED"
+  }
+} else {
+  set PROFILE_DEFINE "-DPROFILE_BALANCED"
+}
+
 # Add design files
 # Note: For CSIM, we use -DUSE_FLOAT to match testbench types
 #       For CSYNTH, HLS will compile WITHOUT -DUSE_FLOAT automatically
 #       This is controlled by config_compile -name_max_length option
 if {$CSIM == 1 && $CSYNTH == 0} {
   # C Simulation only - use float for easy debugging
-  add_files "${SRC_DIR}/hls_cnn.cpp" -cflags "-I${SRC_DIR} -std=c++14 -DUSE_FLOAT"
-  add_files "${CUR_DIR}/uut_top.cpp" -cflags "-I${SRC_DIR} -I${CUR_DIR} -std=c++14 -DUSE_FLOAT"
+  add_files "${SRC_DIR}/hls_cnn.cpp" -cflags "-I${SRC_DIR} -std=c++14 -DUSE_FLOAT ${PROFILE_DEFINE}"
+  add_files "${CUR_DIR}/uut_top.cpp" -cflags "-I${SRC_DIR} -I${CUR_DIR} -std=c++14 -DUSE_FLOAT ${PROFILE_DEFINE}"
 } else {
   # Synthesis or both - use fixed-point for hardware
-  add_files "${SRC_DIR}/hls_cnn.cpp" -cflags "-I${SRC_DIR} -std=c++14"
-  add_files "${CUR_DIR}/uut_top.cpp" -cflags "-I${SRC_DIR} -I${CUR_DIR} -std=c++14"
+  add_files "${SRC_DIR}/hls_cnn.cpp" -cflags "-I${SRC_DIR} -std=c++14 ${PROFILE_DEFINE}"
+  add_files "${CUR_DIR}/uut_top.cpp" -cflags "-I${SRC_DIR} -I${CUR_DIR} -std=c++14 ${PROFILE_DEFINE}"
 }
 
 # Add testbench files - always USE_FLOAT for C simulation accuracy

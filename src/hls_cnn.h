@@ -81,8 +81,8 @@ CONV_OUT_CH:
     CONV_OUT_W:
       for (int ow = 0; ow < OUT_W; ow++) {
 #pragma HLS LOOP_TRIPCOUNT min = 8 max = 24
-// Increased II to 8 for maximum LUT savings
-#pragma HLS PIPELINE II = 8
+// Tunable II via HLS_PIPELINE_II to trade throughput vs resources
+#pragma HLS PIPELINE II = HLS_PIPELINE_II
 
         acc_t sum = bias[oc];
 
@@ -139,8 +139,8 @@ POOL_CH:
     POOL_OW:
       for (int ow = 0; ow < OUT_W; ow++) {
 #pragma HLS LOOP_TRIPCOUNT min = 4 max = 12
-// Increased II to 8 for maximum LUT savings
-#pragma HLS PIPELINE II = 8
+// Tunable II via HLS_PIPELINE_II to trade throughput vs resources
+#pragma HLS PIPELINE II = HLS_PIPELINE_II
 
         data_t max_val = input[c][oh * POOL_SIZE][ow * POOL_SIZE];
 
@@ -193,8 +193,8 @@ FC_OUT:
   FC_IN:
     for (int i = 0; i < IN_SIZE; i++) {
 #pragma HLS LOOP_TRIPCOUNT min = 64 max = 160
-// Increased II to 8 for maximum LUT savings
-#pragma HLS PIPELINE II = 8
+// Tunable II via HLS_PIPELINE_II to trade throughput vs resources
+#pragma HLS PIPELINE II = HLS_PIPELINE_II
 
       sum += input[i] * weights[o][i];
     }
@@ -220,8 +220,8 @@ FLATTEN_C:
     for (int h = 0; h < HEIGHT; h++) {
     FLATTEN_W:
       for (int w = 0; w < WIDTH; w++) {
-// Increased II to 8 for maximum LUT savings
-#pragma HLS PIPELINE II = 8
+// Tunable II via HLS_PIPELINE_II to trade throughput vs resources
+#pragma HLS PIPELINE II = HLS_PIPELINE_II
         output[idx++] = input[c][h][w];
       }
     }

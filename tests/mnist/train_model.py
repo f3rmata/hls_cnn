@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
 MNIST CNN Training Script for Zynq 7020
-Architecture: Conv1[6] -> Conv2[8] -> FC1[64] -> FC2[10]
-Matches HLS cnn_marco.h configuration
-Total Parameters: ~10,000
-Target Accuracy: 90-93%
+Architecture driven by src/cnn_marco.h profiles:
+  ULTRA    -> Conv1[6] -> Conv2[8]  -> FC1[64]  -> FC2[10]
+  BALANCED -> Conv1[6] -> Conv2[12] -> FC1[84]  -> FC2[10]
+  MAX      -> Conv1[8] -> Conv2[16] -> FC1[84]  -> FC2[10]
+Total Parameters depend on selected profile.
 """
 
 import torch
@@ -15,14 +16,70 @@ import numpy as np
 import os
 import argparse
 from datetime import datetime
+import re
 
 # ===================== Architecture Configuration =====================
-# Must match cnn_marco.h exactly
-CONV1_OUT_CH = 6
-CONV2_OUT_CH = 8
-FC1_IN_SIZE = 128  # 8*4*4
-FC1_OUT_SIZE = 64
-FC2_OUT_SIZE = 10
+# Parse macro values directly from src/cnn_marco.h to keep training and HLS aligned.
+def parse_cnn_macros(header_path):
+    macros = {}
+    with open(header_path, 'r') as f:
+        text = f.read()
+
+    def find_int(name, default=None):
+        m = re.search(rf'#define\s+{name}\s+([0-9]+)', text)
+        return int(m.group(1)) if m else default
+
+    macros['CONV1_OUT_CH'] = find_int('CONV1_OUT_CH')
+    macros['CONV2_OUT_CH'] = find_int('CONV2_OUT_CH')
+    macros['CONV1_IMG_SIZE'] = find_int('CONV1_IMG_SIZE')
+    macros['CONV1_KERNEL_SIZE'] = find_int('CONV1_KERNEL_SIZE')
+    macros['POOL1_SIZE'] = find_int('POOL1_SIZE')
+    macros['CONV2_KERNEL_SIZE'] = find_int('CONV2_KERNEL_SIZE')
+    macros['POOL2_SIZE'] = find_int('POOL2_SIZE')
+    macros['FC1_OUT_SIZE'] = find_int('FC1_OUT_SIZE')
+    macros['FC2_OUT_SIZE'] = find_int('FC2_OUT_SIZE')
+
+    # Derived dimensions
+    pool1_img = macros['CONV1_IMG_SIZE'] - macros['CONV1_KERNEL_SIZE'] + 1  # 24
+    conv2_img = pool1_img // macros['POOL1_SIZE']                            # 12
+    pool2_img = conv2_img - macros['CONV2_KERNEL_SIZE'] + 1                  # 8
+    pool2_out = pool2_img // macros['POOL2_SIZE']                            # 4
+    macros['FC1_IN_SIZE'] = macros['CONV2_OUT_CH'] * (pool2_out * pool2_out) # C * 4 * 4
+
+    return macros
+
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+HEADER_PATH = os.path.join(PROJECT_ROOT, 'src', 'cnn_marco.h')
+
+# Detect selected profile from environment (default BALANCED)
+PROFILE = os.environ.get('PROFILE', 'BALANCED').upper()
+
+# Start from header defaults, then override per profile to mirror conditional compilation
+MACROS = parse_cnn_macros(HEADER_PATH)
+
+# Derived spatial sizes (constant for MNIST + LeNet geometry)
+POOL1_IMG = MACROS['CONV1_IMG_SIZE'] - MACROS['CONV1_KERNEL_SIZE'] + 1      # 24
+CONV2_IMG = POOL1_IMG // MACROS['POOL1_SIZE']                                 # 12
+POOL2_IMG = CONV2_IMG - MACROS['CONV2_KERNEL_SIZE'] + 1                       # 8
+POOL2_OUT = POOL2_IMG // MACROS['POOL2_SIZE']                                  # 4
+
+# Override channels per selected profile
+if PROFILE == 'ULTRA':
+    CONV1_OUT_CH = 6
+    CONV2_OUT_CH = 8
+    FC1_OUT_SIZE = 64
+elif PROFILE == 'MAX':
+    CONV1_OUT_CH = 8
+    CONV2_OUT_CH = 16
+    FC1_OUT_SIZE = 84
+else:
+    # BALANCED
+    CONV1_OUT_CH = 6
+    CONV2_OUT_CH = 12
+    FC1_OUT_SIZE = 84
+
+FC1_IN_SIZE = CONV2_OUT_CH * (POOL2_OUT * POOL2_OUT)  # C * 4 * 4
+FC2_OUT_SIZE = MACROS['FC2_OUT_SIZE']
 
 # Quantization parameters (ap_fixed<16,8>)
 QUANT_BITS = 16
@@ -49,27 +106,27 @@ class FakeQuantize(nn.Module):
 class MNIST_CNN(nn.Module):
     """
     CNN architecture matching HLS implementation
-    Conv1[6] -> Pool -> Conv2[8] -> Pool -> FC1[64] -> FC2[10]
+    Conv1[CONV1_OUT_CH] -> Pool -> Conv2[CONV2_OUT_CH] -> Pool -> FC1[FC1_OUT_SIZE] -> FC2[10]
     """
     def __init__(self, dropout_rate=0.4):
         super().__init__()
         
-        # Conv1: 1x28x28 -> 6x24x24 -> 6x12x12
+        # Conv1: 1x28x28 -> CONV1_OUT_CHx24x24 -> CONV1_OUT_CHx12x12
         self.conv1 = nn.Conv2d(1, CONV1_OUT_CH, kernel_size=5, padding=0)
         self.bn1 = nn.BatchNorm2d(CONV1_OUT_CH)
         self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
         
-        # Conv2: 6x12x12 -> 8x8x8 -> 8x4x4
+        # Conv2: CONV1_OUT_CHx12x12 -> CONV2_OUT_CHx8x8 -> CONV2_OUT_CHx4x4
         self.conv2 = nn.Conv2d(CONV1_OUT_CH, CONV2_OUT_CH, kernel_size=5, padding=0)
         self.bn2 = nn.BatchNorm2d(CONV2_OUT_CH)
         self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
         
-        # FC1: 128 -> 64
+        # FC1: (CONV2_OUT_CH*4*4) -> FC1_OUT_SIZE
         self.fc1 = nn.Linear(FC1_IN_SIZE, FC1_OUT_SIZE)
         self.bn3 = nn.BatchNorm1d(FC1_OUT_SIZE)
         self.dropout = nn.Dropout(dropout_rate)
         
-        # FC2: 64 -> 10
+        # FC2: FC1_OUT_SIZE -> 10
         self.fc2 = nn.Linear(FC1_OUT_SIZE, FC2_OUT_SIZE)
         
         # Quantization
@@ -314,12 +371,10 @@ def main():
     args = parser.parse_args()
     
     print("="*70)
-    print("MNIST CNN Training for Zynq 7020 (6-8-64 Architecture)")
+    print(f"MNIST CNN Training for Zynq 7020 (Profile: derived from cnn_marco.h)")
     print("="*70)
     print(f"Architecture: Conv1[{CONV1_OUT_CH}] -> Conv2[{CONV2_OUT_CH}] -> "
           f"FC1[{FC1_OUT_SIZE}] -> FC2[{FC2_OUT_SIZE}]")
-    print(f"Expected parameters: ~10,000")
-    print(f"Target accuracy: 90-93%")
     print("="*70)
     
     # Device selection

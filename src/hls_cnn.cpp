@@ -56,26 +56,35 @@ void hls_cnn::cnn_inference(
     // Output
     data_t output[FC2_OUT_SIZE]) {
 #pragma HLS INTERFACE mode = s_axilite port = return
-#pragma HLS INTERFACE mode = m_axi depth = 784 port = input offset =           \
-    slave bundle = gmem0
-#pragma HLS INTERFACE mode = m_axi depth = 150 port = conv1_weights offset =   \
-    slave bundle = gmem1
-#pragma HLS INTERFACE mode = m_axi depth = 6 port = conv1_bias offset =        \
-    slave bundle = gmem1
-#pragma HLS INTERFACE mode = m_axi depth = 2400 port = conv2_weights offset =  \
-    slave bundle = gmem2
-#pragma HLS INTERFACE mode = m_axi depth = 16 port = conv2_bias offset =       \
-    slave bundle = gmem2
-#pragma HLS INTERFACE mode = m_axi depth = 21504 port = fc1_weights offset =   \
-    slave bundle = gmem3
-#pragma HLS INTERFACE mode = m_axi depth = 84 port = fc1_bias offset =         \
-    slave bundle = gmem3
-#pragma HLS INTERFACE mode = m_axi depth = 840 port = fc2_weights offset =     \
-    slave bundle = gmem4
-#pragma HLS INTERFACE mode = m_axi depth = 10 port = fc2_bias offset =         \
-    slave bundle = gmem4
-#pragma HLS INTERFACE mode = m_axi depth = 10 port = output offset =           \
-    slave bundle = gmem5
+#pragma HLS INTERFACE mode = m_axi depth = (CONV1_IN_CH * CONV1_IMG_SIZE *      \
+                                            CONV1_IMG_SIZE) port = input       \
+                                            offset = slave bundle = gmem0
+#pragma HLS INTERFACE mode = m_axi depth = (CONV1_OUT_CH * CONV1_IN_CH *        \
+                                            CONV1_KERNEL_SIZE *                \
+                                            CONV1_KERNEL_SIZE) port =          \
+                                            conv1_weights offset = slave       \
+                                            bundle = gmem1
+#pragma HLS INTERFACE mode = m_axi depth = (CONV1_OUT_CH) port = conv1_bias     \
+                                            offset = slave bundle = gmem1
+#pragma HLS INTERFACE mode = m_axi depth = (CONV2_OUT_CH * CONV2_IN_CH *        \
+                                            CONV2_KERNEL_SIZE *                \
+                                            CONV2_KERNEL_SIZE) port =          \
+                                            conv2_weights offset = slave       \
+                                            bundle = gmem2
+#pragma HLS INTERFACE mode = m_axi depth = (CONV2_OUT_CH) port = conv2_bias     \
+                                            offset = slave bundle = gmem2
+#pragma HLS INTERFACE mode = m_axi depth = (FC1_OUT_SIZE * FC1_IN_SIZE)         \
+                                            port = fc1_weights offset = slave  \
+                                            bundle = gmem3
+#pragma HLS INTERFACE mode = m_axi depth = (FC1_OUT_SIZE) port = fc1_bias       \
+                                            offset = slave bundle = gmem3
+#pragma HLS INTERFACE mode = m_axi depth = (FC2_OUT_SIZE * FC2_IN_SIZE)         \
+                                            port = fc2_weights offset = slave  \
+                                            bundle = gmem4
+#pragma HLS INTERFACE mode = m_axi depth = (FC2_OUT_SIZE) port = fc2_bias       \
+                                            offset = slave bundle = gmem4
+#pragma HLS INTERFACE mode = m_axi depth = (FC2_OUT_SIZE) port = output         \
+                                            offset = slave bundle = gmem5
 
   // Layer outputs - NO array partitioning to minimize LUT usage
   // Arrays are kept in BRAM with minimal multiplexing

@@ -14,7 +14,18 @@ BUILD_DIR := build
 
 # C++ Compiler
 CXX := g++
-CXXFLAGS := -std=c++14 -I$(SRC_DIR) -Wall -Wextra
+CXXFLAGS = -std=c++14 -I$(SRC_DIR) -Wall -Wextra $(PROFILE_DEFINE)
+
+# Architecture profile selection (affects channel counts and pipeline II)
+# Usage: make <target> PROFILE=ULTRA|BALANCED|MAX
+PROFILE ?= BALANCED
+ifeq ($(PROFILE),ULTRA)
+PROFILE_DEFINE := -DPROFILE_ULTRA
+else ifeq ($(PROFILE),MAX)
+PROFILE_DEFINE := -DPROFILE_MAX
+else
+PROFILE_DEFINE := -DPROFILE_BALANCED
+endif
 
 ############################## Environment Check ##############################
 # Check for Xilinx tools installation
@@ -156,7 +167,7 @@ hls_csim: check_vivado
 	@echo "Running HLS C Simulation..."
 	@echo "Part: $(HLS_PART)"
 	@echo "=========================================="
-	cd $(TEST_HW_DIR) && HLS_PART=$(HLS_PART) $(VPP) -f run_hls.tcl
+	cd $(TEST_HW_DIR) && HLS_PART=$(HLS_PART) PROFILE=$(PROFILE) $(VPP) -f run_hls.tcl
 
 # HLS Synthesis only
 hls_synth: check_vivado
@@ -165,7 +176,7 @@ hls_synth: check_vivado
 	@echo "Part: $(HLS_PART)"
 	@echo "=========================================="
 	cd $(TEST_HW_DIR) && sed -i 's/set CSIM 1/set CSIM 0/' run_hls.tcl && \
-	HLS_PART=$(HLS_PART) $(VPP) -f run_hls.tcl && \
+	HLS_PART=$(HLS_PART) PROFILE=$(PROFILE) $(VPP) -f run_hls.tcl && \
 	sed -i 's/set CSIM 0/set CSIM 1/' run_hls.tcl
 
 # HLS Co-simulation (RTL verification - slow)
@@ -196,7 +207,7 @@ hls_full: check_vivado
 	@echo "Part: $(HLS_PART)"
 	@echo "=========================================="
 	cd $(TEST_HW_DIR) && sed -i 's/set COSIM 0/set COSIM 1/' run_hls.tcl && \
-	HLS_PART=$(HLS_PART) $(VPP) -f run_hls.tcl && \
+	HLS_PART=$(HLS_PART) PROFILE=$(PROFILE) $(VPP) -f run_hls.tcl && \
 	sed -i 's/set COSIM 1/set COSIM 0/' run_hls.tcl
 
 # Clean
@@ -239,20 +250,20 @@ mnist_download:
 # Train CNN and export weights
 mnist_train:
 	@echo "=========================================="
-	@echo "Training CNN on MNIST (6-8-64 Architecture)"
+	@echo "Training CNN on MNIST (Profile=$(PROFILE))"
 	@echo "=========================================="
 	@which python3 > /dev/null || (echo "ERROR: python3 not found" && exit 1)
 	@python3 -c "import torch" 2>/dev/null || (echo "ERROR: PyTorch not installed. Install with: pip3 install torch torchvision" && exit 1)
-	cd $(TEST_MNIST_DIR) && python3 train_model.py --epochs 60 --batch-size 32
+	cd $(TEST_MNIST_DIR) && PROFILE=$(PROFILE) python3 train_model.py --epochs 60 --batch-size 32
 
 # Quick training (20 epochs for testing)
 mnist_train_quick:
 	@echo "=========================================="
-	@echo "Quick Training (20 epochs)"
+	@echo "Quick Training (20 epochs, Profile=$(PROFILE))"
 	@echo "=========================================="
 	@which python3 > /dev/null || (echo "ERROR: python3 not found" && exit 1)
 	@python3 -c "import torch" 2>/dev/null || (echo "ERROR: PyTorch not installed. Install with: pip3 install torch torchvision" && exit 1)
-	cd $(TEST_MNIST_DIR) && python3 train_model.py --epochs 20 --batch-size 64
+	cd $(TEST_MNIST_DIR) && PROFILE=$(PROFILE) python3 train_model.py --epochs 20 --batch-size 64
 
 # Build MNIST test executable
 $(BUILD_DIR)/mnist_test: $(TEST_MNIST_DIR)/mnist_test.cpp $(SRC_DIR)/hls_cnn.cpp $(SRC_DIR)/hls_cnn.h $(SRC_DIR)/cnn_marco.h
